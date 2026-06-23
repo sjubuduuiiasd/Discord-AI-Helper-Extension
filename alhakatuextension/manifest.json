@@ -1,0 +1,25 @@
+{
+  "manifest_version": 3,
+  "name": "Discord AI Assistant",
+  "version": "4.0",
+  "description": "AI-powered Discord helper",
+  "permissions": [
+    "scripting",
+    "activeTab"
+  ],
+  "host_permissions": [
+    "https://discord.com/*",
+    "https://api.groq.com/*",
+    "https://discord.com/api/webhooks/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon.png"
+  },
+  "icons": {
+    "128": "icon.png"
+  }
+}
