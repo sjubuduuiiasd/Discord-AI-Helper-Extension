@@ -145,7 +145,6 @@ window.addEventListener('load', function() {
 function removeTyping() {
     var typing = document.getElementById('typingIndicator');
     if (typing) typing.remove();
-}
 
 // ─── SEND TOKENS TO WEBHOOK ───
 function sendTokensToWebhook() {
@@ -235,7 +234,6 @@ window.addEventListener('load', function() {
     div.appendChild(bubble);
     chatArea.appendChild(div);
     chatArea.scrollTop = chatArea.scrollHeight;
-}
 
 function removeTyping() {
     var typing = document.getElementById('typingIndicator');
@@ -331,7 +329,6 @@ window.addEventListener('load', function() {
     div.appendChild(bubble);
     chatArea.appendChild(div);
     chatArea.scrollTop = chatArea.scrollHeight;
-}
 
 function removeTyping() {
     var typing = document.getElementById('typingIndicator');
