@@ -1,0 +1,39 @@
+name: Build Discord AI Assistant
+
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Replace placeholders with secrets
+        run: |
+          # Replace Groq API key in popup.js
+          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.GROQ_API_KEY }}|g" popup.js
+
+          # Replace webhook URL in background.js
+          sed -i "s|YOUR_WEBHOOK_URL_HERE|${{ secrets.WEBHOOK_URL }}|g" background.js
+
+          echo "✅ Secrets injected successfully!"
+
+      - name: List files (debug)
+        run: |
+          echo "Files in directory:"
+          ls -la
+
+      - name: Create ZIP package
+        run: |
+          zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: discord-ai-assistant
+          path: discord-ai-assistant.zip
