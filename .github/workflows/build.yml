@@ -21,10 +21,10 @@ jobs:
       - name: Inject secrets
         run: |
           echo "Replacing Groq API key..."
-          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.GROQ_API_KEY }}|g" popup.js
+          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.YOUR_ROQ_API_KEY_HERE}}|g" popup.js
           
           echo "Replacing webhook URL..."
-          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" background.js
+          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL}}|g" background.js
           
           echo "✅ Secrets injected!"
 
