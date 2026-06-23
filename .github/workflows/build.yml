@@ -13,52 +13,38 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: List files (debug)
+      - name: Debug - Show files
         run: |
-          echo "Current directory:"
-          pwd
-          echo "Files in root:"
+          echo "=== Files in root ==="
           ls -la
-          echo "Files in extension folder (if exists):"
-          ls -la alhakatuextension/ || echo "No extension folder"
+          echo "=== Files in alhakatuextension ==="
+          ls -la alhakatuextension/ || echo "Folder not found"
 
-      - name: Replace placeholders with secrets
+      - name: Inject secrets
         run: |
-          # If files are in a subfolder called 'extension', cd into it first
-          # Otherwise, they're in the root
-          if [ -d "alhakatuextension" ]; then
-            cd alhakatuextension
-          fi
-          
-          # Replace Groq API key in popup.js
+          cd alhakatuextension
           echo "Replacing Groq API key..."
           sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.GROQ_API_KEY }}|g" popup.js
           
-          # Replace webhook URL in background.js
           echo "Replacing webhook URL..."
           sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" background.js
           
-          echo "✅ Secrets injected successfully!"
+          echo "✅ Secrets injected!"
 
-      - name: Verify replacements
+      - name: Verify injection
         run: |
-          if [ -d "alhakatuextension" ]; then
-            cd alhakatuextension
-          fi
-          echo "=== popup.js first 5 lines ==="
-          head -5 popup.js
-          echo "=== background.js first 5 lines ==="
-          head -5 background.js
+          cd alhakatuextension
+          echo "=== popup.js first 3 lines ==="
+          head -3 popup.js
+          echo ""
+          echo "=== background.js first 3 lines ==="
+          head -3 background.js
 
-      - name: Create ZIP package
+      - name: Create ZIP
         run: |
-          if [ -d "alhakatuextension" ]; then
-            cd alhakatuextension
-            zip -r ../discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
-            cd ..
-          else
-            zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
-          fi
+          cd alhakatuextension
+          zip -r ../discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
+          cd ..
           echo "✅ ZIP created!"
 
       - name: Upload artifact
