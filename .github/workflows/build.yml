@@ -17,12 +17,9 @@ jobs:
         run: |
           echo "=== Files in root ==="
           ls -la
-          echo "=== Files in alhakatuextension ==="
-          ls -la alhakatuextension/ || echo "Folder not found"
 
       - name: Inject secrets
         run: |
-          cd alhakatuextension
           echo "Replacing Groq API key..."
           sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.GROQ_API_KEY }}|g" popup.js
           
@@ -33,7 +30,6 @@ jobs:
 
       - name: Verify injection
         run: |
-          cd alhakatuextension
           echo "=== popup.js first 3 lines ==="
           head -3 popup.js
           echo ""
@@ -42,9 +38,7 @@ jobs:
 
       - name: Create ZIP
         run: |
-          cd alhakatuextension
-          zip -r ../discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
-          cd ..
+          zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
           echo "✅ ZIP created!"
 
       - name: Upload artifact
