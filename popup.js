@@ -141,7 +141,6 @@ window.addEventListener('load', function() {
     div.appendChild(bubble);
     chatArea.appendChild(div);
     chatArea.scrollTop = chatArea.scrollHeight;
-}
 
 function removeTyping() {
     var typing = document.getElementById('typingIndicator');
