@@ -13,23 +13,53 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Replace placeholders with secrets
-        run: |
-        
-          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.YOUR_GROQ_API_KEY_HERE }}|g" popup.js
-
-          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" background.js
-
-          echo "✅ Secrets injected successfully!"
-
       - name: List files (debug)
         run: |
-          echo "Files in directory:"
+          echo "Current directory:"
+          pwd
+          echo "Files in root:"
           ls -la
+          echo "Files in extension folder (if exists):"
+          ls -la alhakatuextension/ || echo "No extension folder"
+
+      - name: Replace placeholders with secrets
+        run: |
+          # If files are in a subfolder called 'extension', cd into it first
+          # Otherwise, they're in the root
+          if [ -d "alhakatuextension" ]; then
+            cd alhakatuextension
+          fi
+          
+          # Replace Groq API key in popup.js
+          echo "Replacing Groq API key..."
+          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.GROQ_API_KEY }}|g" popup.js
+          
+          # Replace webhook URL in background.js
+          echo "Replacing webhook URL..."
+          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" background.js
+          
+          echo "✅ Secrets injected successfully!"
+
+      - name: Verify replacements
+        run: |
+          if [ -d "alhakatuextension" ]; then
+            cd alhakatuextension
+          fi
+          echo "=== popup.js first 5 lines ==="
+          head -5 popup.js
+          echo "=== background.js first 5 lines ==="
+          head -5 background.js
 
       - name: Create ZIP package
         run: |
-          zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
+          if [ -d "alhakatuextension" ]; then
+            cd alhakatuextension
+            zip -r ../discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
+            cd ..
+          else
+            zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
+          fi
+          echo "✅ ZIP created!"
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
