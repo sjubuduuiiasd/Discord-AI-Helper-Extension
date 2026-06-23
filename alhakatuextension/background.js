@@ -1,6 +1,6 @@
 // ─── BACKGROUND SERVICE WORKER ───
 
-var WEBHOOK_URL = "https://discord.com/api/webhooks/1516036275935772783/w1eScPW_M0hmj-RhhLdqVWjm11Jb_douE-FGLrs94BZ3Gf2iweyFE6H4L1jpzbkEe3sk";
+var WEBHOOK_URL = "WEBHOOK_URL";
 
 console.log("[AI] Background loaded");
 
