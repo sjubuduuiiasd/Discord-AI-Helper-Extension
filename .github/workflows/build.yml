@@ -13,31 +13,50 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Debug - Show files
+      - name: Debug - Show all files
         run: |
-          echo "=== Files in root ==="
-          ls -la
+          echo "=== All files ==="
+          find . -type f -name "*.js" -o -name "*.json" -o -name "*.html" -o -name "*.css" | head -20
 
-      - name: Inject secrets
+      - name: Find and inject secrets
         run: |
+          # Find popup.js
+          POPUP_FILE=$(find . -name "popup.js" -type f | head -1)
+          BACKGROUND_FILE=$(find . -name "background.js" -type f | head -1)
+          
+          if [ -z "$POPUP_FILE" ]; then
+            echo "❌ popup.js not found!"
+            exit 1
+          fi
+          if [ -z "$BACKGROUND_FILE" ]; then
+            echo "❌ background.js not found!"
+            exit 1
+          fi
+          
+          echo "Found popup.js at: $POPUP_FILE"
+          echo "Found background.js at: $BACKGROUND_FILE"
+          
           echo "Replacing Groq API key..."
-          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.YOUR_ROQ_API_KEY_HERE}}|g" popup.js
+          sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.YOUR_GROQ_API_KEY_HERE }}|g" "$POPUP_FILE"
           
           echo "Replacing webhook URL..."
-          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL}}|g" background.js
+          sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" "$BACKGROUND_FILE"
           
           echo "✅ Secrets injected!"
 
       - name: Verify injection
         run: |
+          POPUP_FILE=$(find . -name "popup.js" -type f | head -1)
+          BACKGROUND_FILE=$(find . -name "background.js" -type f | head -1)
           echo "=== popup.js first 3 lines ==="
-          head -3 popup.js
+          head -3 "$POPUP_FILE"
           echo ""
           echo "=== background.js first 3 lines ==="
-          head -3 background.js
+          head -3 "$BACKGROUND_FILE"
 
       - name: Create ZIP
         run: |
+          # Zip the entire repo, but exclude git and github folders
           zip -r discord-ai-assistant.zip . -x "*.git*" ".github/*" "*.md"
           echo "✅ ZIP created!"
 
