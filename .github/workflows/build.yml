@@ -15,10 +15,9 @@ jobs:
 
       - name: Replace placeholders with secrets
         run: |
-          # Replace Groq API key in popup.js
+        
           sed -i "s|YOUR_GROQ_API_KEY_HERE|${{ secrets.YOUR_GROQ_API_KEY_HERE }}|g" popup.js
 
-          # Replace webhook URL in background.js
           sed -i "s|WEBHOOK_URL|${{ secrets.WEBHOOK_URL }}|g" background.js
 
           echo "✅ Secrets injected successfully!"
