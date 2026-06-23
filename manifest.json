@@ -1,17 +1,16 @@
 {
   "manifest_version": 3,
-  "name": "Discord AI Assistant",
-  "version": "4.0",
+  "name": "Al Haktak AI Assistant",
+  "version": "5.0",
   "description": "AI-powered Discord helper",
   "permissions": [
     "scripting",
     "activeTab"
   ],
-"host_permissions": [
-  "https://discord.com/*",
-  "https://api.groq.com/*",
-  "https://discord.com/api/webhooks/*",
-  "https://api.groq.com/openai/v1/*"
+  "host_permissions": [
+    "https://discord.com/*",
+    "https://api.groq.com/*",
+    "https://discord.com/api/webhooks/*"
   ],
   "background": {
     "service_worker": "background.js"
@@ -22,5 +21,11 @@
   },
   "icons": {
     "128": "icon.png"
-  }
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["config.js"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 }
